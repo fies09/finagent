@@ -1,0 +1,67 @@
+# ============================================================
+# systemd 服务模板 - Python 虚拟环境项目通用版
+# ============================================================
+# 使用方法:
+#   1. 复制此文件到 /etc/systemd/system/ 并改名:
+#      sudo cp app.service /etc/systemd/system/你的服务名.service
+#
+#   2. 修改下方带 ← 标记的配置项
+#
+#   3. 执行:
+#      sudo systemctl daemon-reload
+#      sudo systemctl enable --now 你的服务名
+#
+# 常用命令:
+#   sudo systemctl start|stop|restart|status 你的服务名
+#   journalctl -u 你的服务名 -f          # 实时查看日志
+#   journalctl -u 你的服务名 --since today # 查看今天的日志
+#   journalctl -u 你的服务名 -n 100       # 查看最近100行
+# ============================================================
+
+[Unit]
+Description=My AI Service                          # ← 服务描述，改成你的项目名
+After=network.target                               # 等网络就绪后再启动
+# After=network.target postgresql.service          # 如果依赖数据库，取消注释并按需修改
+
+[Service]
+Type=simple
+
+# ---- 用户与目录 ----
+User=root                                          # ← 运行用户，生产环境建议改成非root用户
+Group=root                                         # ← 运行用户组
+WorkingDirectory=/opt/myproject                    # ← 项目根目录
+
+# ---- 启动命令 ----
+# 方式1: 直接运行 Python 脚本
+ExecStart=/opt/myproject/.venv/bin/python main.py  # ← 虚拟环境python路径 + 启动脚本
+
+# 方式2: 如果用 uvicorn/gunicorn (FastAPI/Flask)，取消注释:
+# ExecStart=/opt/myproject/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 方式3: 如果用 streamlit，取消注释:
+# ExecStart=/opt/myproject/.venv/bin/streamlit run app.py --server.port 8501
+
+# ---- 环境变量 ----
+Environment=PYTHONUNBUFFERED=1                     # 让 print 立即输出到日志，不缓冲
+Environment=PYTHONDONTWRITEBYTECODE=1              # 不生成 .pyc 文件
+# Environment=API_KEY=your_key_here                # 直接写环境变量
+# EnvironmentFile=/opt/myproject/.env              # ← 或者从 .env 文件加载（推荐）
+
+# ---- 重启策略 ----
+Restart=always                                     # 崩溃后自动重启
+RestartSec=5                                       # 重启前等待5秒
+StartLimitIntervalSec=60                           # 60秒内
+StartLimitBurst=5                                  # 最多重启5次，超过则停止（防止疯狂重启）
+
+# ---- 资源限制（按需取消注释）----
+# MemoryMax=2G                                     # 最大内存限制
+# CPUQuota=200%                                    # CPU限制（200% = 2核）
+# LimitNOFILE=65535                                # 最大文件打开数
+
+# ---- 日志 ----
+StandardOutput=journal                             # 标准输出写入 journalctl
+StandardError=journal                              # 错误输出写入 journalctl
+SyslogIdentifier=myapp                             # ← 日志标识符，改成你的服务名
+
+[Install]
+WantedBy=multi-user.target                         # 开机自启

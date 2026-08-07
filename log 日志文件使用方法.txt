@@ -1,0 +1,13 @@
+# log.py 使用方式
+# main.py - 服务入口处初始化一次
+import logging
+from common.log import get_logger
+
+# 首次调用决定全局配置，后续所有 from common.log import logger 都继承这个配置
+logger = get_logger(
+    name="telecom_ai",
+    level=logging.INFO,
+    json_output=True,       # ELK / Loki 采集用
+    backup_count=60,        # 保留60天
+    max_bytes=50*1024*1024, # 单文件最大50MB
+)
