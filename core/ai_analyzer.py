@@ -7,6 +7,10 @@ from typing import Any
 import openai
 from log import logger
 
+from .cache import CacheClient
+
+_cache = CacheClient()
+
 
 _JSON_RE = re.compile(r"\{[\s\S]*\}", re.MULTILINE)
 _DEFAULT_RESULT = {
@@ -83,8 +87,7 @@ class AIAnalyzer:
     ) -> dict[str, Any]:
         import hashlib
         cache_key = f"ai:news:{hashlib.md5(f'{symbol}|{model or self.model}|{news_text}'.encode()).hexdigest()}"
-        from core.cache import cache
-        cached = cache.get(cache_key)
+        cached = _cache.get(cache_key)
         if cached:
             return cached
         prompt = f"""你是一名严谨的金融分析助手。请分析以下新闻对{symbol}价格的潜在影响。
@@ -108,7 +111,7 @@ class AIAnalyzer:
             content = self._call(prompt, model)
             result = _safe_json(content)
             if result.get("reasoning") != _DEFAULT_RESULT["reasoning"] or result.get("confidence", 0) > 0:
-                cache.set(cache_key, result, ttl=3600)
+                _cache.set(cache_key, result, ttl=3600)
             return result
         except Exception as e:
             logger.error(f"analyze_news failed: {e}")
