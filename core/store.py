@@ -2,7 +2,7 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import ccxt
 import pandas as pd
@@ -65,6 +65,15 @@ class DataStore:
                     report_path TEXT,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS system_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    source TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_logs_level ON system_logs(level);
+                CREATE INDEX IF NOT EXISTS idx_logs_time ON system_logs(created_at);
                 """
             )
 
@@ -85,7 +94,7 @@ class DataStore:
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
     ) -> pd.DataFrame:
-        query = "SELECT * FROM ohlcv WHERE symbol=? AND exchange=?"
+        query = "SELECT * FROM ohlcv WHERE symbol=? AND LOWER(exchange)=LOWER(?)"
         params: list = [symbol, exchange]
         if start:
             query += " AND timestamp >= ?"
@@ -140,6 +149,14 @@ class DataStore:
                 (exit_price, pnl, datetime.utcnow().isoformat(), trade_id),
             )
             conn.commit()
+
+    def list_open_positions(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM trade_journal WHERE status='open' ORDER BY created_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def log_strategy_run(self, **kwargs) -> None:
         with sqlite3.connect(self.db_path) as conn:

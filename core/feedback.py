@@ -14,11 +14,14 @@ class FeedbackLoop:
 
     def generate_report(self, days: int = 30) -> dict[str, Any]:
         since = (datetime.utcnow() - timedelta(days=days)).isoformat()
-        with pd.read_sql_query(
-            "SELECT * FROM trade_journal WHERE created_at > ?",
-            self.store.db_path,
-            params=(since,),
-        ) as df:
+        import sqlite3
+        conn = sqlite3.connect(str(self.store.db_path))
+        try:
+            df = pd.read_sql_query(
+                "SELECT * FROM trade_journal WHERE created_at > ?",
+                conn,
+                params=(since,),
+            )
             if df.empty:
                 return {"message": "no trades in period"}
 
@@ -45,6 +48,8 @@ class FeedbackLoop:
                 else 0.0,
                 "recommendation": self._recommend(df),
             }
+        finally:
+            conn.close()
 
     def _recommend(self, df: pd.DataFrame) -> str:
         high = df[df["ai_confidence"] >= 0.7]

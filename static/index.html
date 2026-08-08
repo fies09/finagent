@@ -84,6 +84,13 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tab" onclick="switchTab('logs')">系统日志</div>
 </div>
 
+<div class="card full-width">
+<h3>最新新闻分析</h3>
+<div id="dash-news-list" style="min-height:120px">
+<div class="metric"><span class="metric-label">加载中...</span></div>
+</div>
+</div>
+
 <div id="dashboard" class="tab-content active">
 <div class="grid">
 <div class="card">
@@ -188,17 +195,51 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <option value="SOL/USDT">SOL/USDT</option>
 </select>
 </div>
-<div class="input-group">
-<label>新闻内容</label>
-<textarea id="news-text" placeholder="输入新闻内容..."></textarea>
+<div class="btn-group">
+<button class="btn btn-secondary" onclick="fetchNewsList()">
+<span id="news-list-loading" style="display:none" class="loading"></span>
+抓取新闻列表
+</button>
+</div>
+<div id="news-list" style="margin:12px 0;max-height:300px;overflow-y:auto"></div>
+<div class="input-group" style="display:none" id="news-text-wrap">
+<label>选中新闻内容</label>
+<textarea id="news-text" readonly></textarea>
 </div>
 <div class="btn-group">
 <button class="btn btn-primary" onclick="analyzeNews()">
 <span id="news-loading" style="display:none" class="loading"></span>
-分析新闻
+分析选中新闻
 </button>
 </div>
-<div class="result-box" id="news-result">点击"分析新闻"查看结果</div>
+<div class="result-box" id="news-result">先点击"抓取新闻列表"，选择一条新闻后分析</div>
+</div>
+
+<div class="card full-width">
+<h3>实时新闻 + 自动分析</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="auto-news-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>AI 模型</label>
+<select id="auto-news-model">
+<option value="claude-sonnet-5">Claude Sonnet 5</option>
+<option value="claude-opus-5">Claude Opus 5</option>
+<option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="fetchAndAnalyzeNews()">
+<span id="news-auto-loading" style="display:none" class="loading"></span>
+抓取并分析最新新闻
+</button>
+</div>
+<div class="result-box" id="news-auto-result">点击按钮从 CryptoPanic / CoinDesk / Cointelegraph 抓取并分析</div>
 </div>
 
 <div class="card full-width">
@@ -307,7 +348,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </div>
 
 <script>
-const API_BASE = 'http://localhost:8000';
+const API_BASE = window.location.origin;
 let startTime = Date.now();
 
 function switchTab(tab) {
@@ -335,7 +376,7 @@ async function analyzeNews() {
 const symbol = document.getElementById('news-symbol').value;
 const text = document.getElementById('news-text').value;
 const model = document.getElementById('ai-model').value;
-if (!text.trim()) { alert('请输入新闻内容'); return; }
+if (!text.trim()) { alert('请先抓取并选择一条新闻'); return; }
 setLoading('news-loading', true);
 const result = await apiCall('/analyze/news', {
 method: 'POST',
@@ -346,12 +387,51 @@ setLoading('news-loading', false);
 document.getElementById('news-result').textContent = JSON.stringify(result, null, 2);
 }
 
+async function fetchNewsList() {
+const symbol = document.getElementById('news-symbol').value;
+setLoading('news-list-loading', true);
+const r = await apiCall(`/news/recent?symbol=${encodeURIComponent(symbol)}&hours=72&limit=10`);
+setLoading('news-list-loading', false);
+const list = document.getElementById('news-list');
+if (r.error || !r.news || !r.news.length) {
+list.innerHTML = `<div class="metric"><span class="metric-label" style="color:var(--danger)">未抓取到相关新闻</span></div>`;
+return;
+}
+list.innerHTML = r.news.map((it, i) => `
+<div class="metric" style="cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px" onclick="selectNews(${i})">
+<div style="display:flex;justify-content:space-between;gap:8px">
+<span class="metric-label" style="font-weight:600">${it.title}</span>
+<span style="font-size:11px;color:var(--muted)">${it.source}</span>
+</div>
+</div>
+`).join('');
+list.dataset.news = JSON.stringify(r.news);
+}
+
+function selectNews(idx) {
+const news = JSON.parse(document.getElementById('news-list').dataset.news || '[]');
+const it = news[idx];
+if (!it) return;
+document.getElementById('news-text').value = it.text;
+document.getElementById('news-text-wrap').style.display = 'block';
+document.getElementById('news-result').textContent = `已选中: ${it.title}\n点击"分析选中新闻"查看AI分析结果`;
+}
+
 async function analyzeFactor() {
 const symbol = document.getElementById('factor-symbol').value;
 setLoading('factor-loading', true);
 const result = await apiCall(`/analyze/factor?symbol=${encodeURIComponent(symbol)}`, { method: 'POST' });
 setLoading('factor-loading', false);
 document.getElementById('factor-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function fetchAndAnalyzeNews() {
+const symbol = document.getElementById('auto-news-symbol').value;
+const model = document.getElementById('auto-news-model').value;
+setLoading('news-auto-loading', true);
+const result = await apiCall(`/news/analyze?symbol=${encodeURIComponent(symbol)}&limit=5&model=${encodeURIComponent(model)}`, { method: 'POST' });
+setLoading('news-auto-loading', false);
+document.getElementById('news-auto-result').textContent = JSON.stringify(result, null, 2);
 }
 
 async function runBacktest() {
@@ -391,19 +471,27 @@ document.getElementById('feedback-result').textContent = JSON.stringify(result, 
 }
 
 async function fetchLogs() {
-try {
-const res = await fetch(`${API_BASE}/`);
-const data = await res.json();
-document.getElementById('log-container').innerHTML =
-`<div class="log-entry"><span class="log-time">${new Date().toLocaleTimeString()}</span> <span class="log-success">API状态: ${JSON.stringify(data)}</span></div>`;
-} catch (e) {
-document.getElementById('log-container').innerHTML =
-`<div class="log-entry"><span class="log-time">${new Date().toLocaleTimeString()}</span> <span class="log-error">连接失败: ${e.message}</span></div>`;
-}
+  const res = await apiCall('/logs?limit=100');
+  const box = document.getElementById('log-container');
+  if (res.error || !res.logs) {
+    box.innerHTML = `<div class="log-entry"><span class="log-error">加载失败: ${res.error || 'no data'}</span></div>`;
+    return;
+  }
+  if (!res.logs.length) {
+    box.innerHTML = `<div class="log-entry"><span class="log-info">暂无日志</span></div>`;
+    return;
+  }
+  box.innerHTML = res.logs.map(l => {
+    const lvl = (l.level || 'INFO').toLowerCase();
+    const cls = ['log-info','log-success','log-warning','log-error'].includes('log-' + lvl) ? 'log-' + lvl : 'log-info';
+    return `<div class="log-entry"><span class="log-time">${(l.created_at||'').slice(11,19)}</span> <span class="${cls}">[${l.level}] ${l.message}</span></div>`;
+  }).join('');
+  box.scrollTop = 0;
 }
 
-function clearLogs() {
-document.getElementById('log-container').innerHTML = '';
+async function clearLogs() {
+  await apiCall('/logs/clear', { method: 'POST' });
+  document.getElementById('log-container').innerHTML = '';
 }
 
 function updateUptime() {
@@ -415,7 +503,99 @@ document.getElementById('uptime').textContent = `${h}h ${m}m ${s}s`;
 }
 
 setInterval(updateUptime, 1000);
+setInterval(fetchLogs, 5000);
 fetchLogs();
+
+// 仪表盘加载最新新闻 + AI分析 Tab 同时自动分析
+async function loadDashboardNews() {
+  const container = document.getElementById('dash-news-list');
+  if (!container) return;
+  const res = await apiCall('/news/analyze?symbol=BTC/USDT&limit=3&model=claude-sonnet-5', { method: 'POST' });
+  if (res.error || !res.results) {
+    container.innerHTML = `<div class="metric"><span class="metric-label" style="color:var(--danger)">加载失败: ${res.error || 'no data'}</span></div>`;
+    return;
+  }
+  if (!res.results.length) {
+    container.innerHTML = `<div class="metric"><span class="metric-label">暂无新闻</span></div>`;
+    return;
+  }
+  container.innerHTML = res.results.map((r, i) => {
+    const sentiment = r.sentiment_score ?? 0;
+    const cls = sentiment > 0.1 ? 'up' : sentiment < -0.1 ? 'down' : '';
+    return `
+      <div class="metric" style="padding:14px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span class="metric-label" style="font-weight:600">${i+1}. ${r.title || '(无标题)'}</span>
+          <span class="metric-value ${cls}">${sentiment.toFixed(2)}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px">${r.reasoning || ''}</div>
+        <div style="font-size:11px;color:var(--muted)">影响: ${r.impact_level || '-'} · 置信度: ${((r.confidence || 0)*100).toFixed(0)}% ${r.url ? `· <a href="${r.url}" target="_blank" style="color:var(--accent)">原文</a>` : ''}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadDashboardSignal() {
+  const r = await apiCall('/signal/latest?symbol=BTC/USDT');
+  if (r.error || !r.signal) return;
+  const sig = r.signal;
+  const sigEl = document.getElementById('latest-signal');
+  sigEl.textContent = sig;
+  sigEl.className = 'metric-value ' + (sig === 'buy' ? 'up' : sig === 'sell' ? 'down' : '');
+  document.getElementById('confidence').textContent = ((r.confidence || 0) * 100).toFixed(0) + '%';
+  document.getElementById('signal-strength').textContent = (r.strength || 0).toFixed(2);
+  document.getElementById('analyzed-symbols').textContent = (r.symbols || []).join(', ') || '--';
+}
+
+async function loadDashboardRisk() {
+  const r = await apiCall('/risk/status');
+  if (r.error) return;
+  document.getElementById('position-count').textContent = r.position_count;
+  document.getElementById('total-exposure').textContent = '$' + Number(r.total_exposure || 0).toLocaleString();
+  document.getElementById('max-drawdown').textContent = (r.max_drawdown || 0).toFixed(2) + '%';
+  const st = document.getElementById('risk-status');
+  st.textContent = r.status === 'normal' ? '正常' : '告警';
+  st.className = 'metric-value ' + (r.status === 'normal' ? 'up' : 'down');
+}
+
+setTimeout(() => {
+  loadDashboardPrices();
+  loadDashboardNews();
+  loadDashboardSignal();
+  loadDashboardRisk();
+}, 500);
+setInterval(() => {
+  loadDashboardPrices();
+  loadDashboardNews();
+  loadDashboardSignal();
+  loadDashboardRisk();
+}, 30000);
+
+async function loadDashboardPrices() {
+  const symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
+  for (const s of symbols) {
+    const id = s.split('/')[0].toLowerCase() + '-price';
+    const el = document.getElementById(id);
+    if (!el) continue;
+    try {
+      const r = await apiCall(`/market/price?symbol=${encodeURIComponent(s)}`);
+      if (r.price) {
+        const ch = r.change_24h_pct || 0;
+        el.textContent = `$${r.price.toLocaleString(undefined, {maximumFractionDigits: 2})} (${ch.toFixed(2)}%)`;
+        el.className = 'metric-value ' + (ch >= 0 ? 'up' : 'down');
+      } else {
+        el.textContent = '--';
+      }
+    } catch (e) {
+      el.textContent = '--';
+    }
+  }
+}
+
+setInterval(() => {
+  loadDashboardPrices();
+  loadDashboardNews();
+}, 30000);
 </script>
 </body>
 </html>

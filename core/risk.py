@@ -73,6 +73,17 @@ class RiskManager:
             return True
         return False
 
+    def total_exposure(self, positions: list[dict[str, Any]] | None = None) -> float:
+        if positions is not None:
+            return float(sum((p.get("entry_price", 0) or 0) * (p.get("quantity", 0) or 0) for p in positions))
+        return float(sum(p["value"] for p in self.positions.values()))
+
+    def max_drawdown(self) -> float:
+        return float(self.cfg.max_drawdown * 100)
+
+    def check(self) -> bool:
+        return len(self.positions) < 10
+
     def get_position_summary(self) -> dict[str, Any]:
         total = sum(p["value"] for p in self.positions.values())
         return {

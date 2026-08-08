@@ -1,4 +1,5 @@
 import json
+import re
 import os
 from typing import Any
 
@@ -6,17 +7,34 @@ import openai
 from log import logger
 
 
+_JSON_RE = re.compile(r"\{[\s\S]*\}", re.MULTILINE)
+
+
 def _strip_json(content: str) -> str:
     if not content:
         return ""
     s = content.strip()
     if s.startswith("```"):
-        s = s.strip("`")
-        if s.startswith("json"):
-            s = s[4:]
-        if s.endswith("```"):
-            s = s[:-3]
+        s = re.sub(r"^```(?:json)?\s*", "", s, flags=re.IGNORECASE)
+        s = re.sub(r"\s*```\s*$", "", s)
+        return s.strip()
+    m = _JSON_RE.search(s)
+    if m:
+        return m.group(0).strip()
     return s.strip()
+
+
+def _safe_json(content: str) -> dict[str, Any]:
+    s = _strip_json(content)
+    try:
+        return json.loads(s)
+    except Exception:
+        return {
+            "sentiment_score": 0.0,
+            "impact_level": "低",
+            "reasoning": f"JSON 解析失败，已降级。原文: {content[:120]}",
+            "confidence": 0.0,
+        }
 
 
 class AIAnalyzer:
@@ -61,7 +79,7 @@ class AIAnalyzer:
 """
         try:
             content = self._call(prompt, model)
-            return json.loads(_strip_json(content))
+            return _safe_json(content)
         except Exception as e:
             logger.error(f"analyze_news failed: {e}")
             return {
@@ -98,7 +116,8 @@ class AIAnalyzer:
 """
         try:
             content = self._call(prompt)
-            return json.loads(_strip_json(content))
+            data = _safe_json(content)
+            return data if isinstance(data, dict) and "factors" in data else {"factors": []}
         except Exception as e:
             logger.error(f"generate_factor failed: {e}")
             return {"factors": []}
