@@ -2,18 +2,45 @@ import json
 import os
 from typing import Any
 
-import dashscope
-from dashscope import Generation
+import openai
 from log import logger
 
 
+def _strip_json(content: str) -> str:
+    if not content:
+        return ""
+    s = content.strip()
+    if s.startswith("```"):
+        s = s.strip("`")
+        if s.startswith("json"):
+            s = s[4:]
+        if s.endswith("```"):
+            s = s[:-3]
+    return s.strip()
+
+
 class AIAnalyzer:
-    def __init__(self, api_key: str | None = None, model: str = "qwen-turbo"):
-        dashscope.api_key = api_key or os.getenv("DASHSCOPE_API_KEY", "")
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        model: str = "claude-sonnet-5",
+    ):
+        self.client = openai.OpenAI(
+            api_key=api_key or os.getenv("OPENAI_API_KEY", ""),
+            base_url=base_url or os.getenv("OPENAI_BASE_URL", "https://cloud.yiyongai.cn/v1"),
+        )
         self.model = model
 
+    def _call(self, prompt: str, model: str | None = None) -> str:
+        resp = self.client.chat.completions.create(
+            model=model or self.model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content or ""
+
     def analyze_news(
-        self, symbol: str, news_text: str
+        self, symbol: str, news_text: str, model: str | None = None
     ) -> dict[str, Any]:
         prompt = f"""你是一名严谨的金融分析助手。请分析以下新闻对{symbol}价格的潜在影响。
 
@@ -33,13 +60,8 @@ class AIAnalyzer:
 新闻内容：{news_text}
 """
         try:
-            response = Generation.call(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                result_format="message",
-            )
-            content = response.output.choices[0].message.content
-            return json.loads(content)
+            content = self._call(prompt, model)
+            return json.loads(_strip_json(content))
         except Exception as e:
             logger.error(f"analyze_news failed: {e}")
             return {
@@ -75,13 +97,8 @@ class AIAnalyzer:
 }}
 """
         try:
-            response = Generation.call(
-                model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                result_format="message",
-            )
-            content = response.output.choices[0].message.content
-            return json.loads(content)
+            content = self._call(prompt)
+            return json.loads(_strip_json(content))
         except Exception as e:
             logger.error(f"generate_factor failed: {e}")
             return {"factors": []}

@@ -26,6 +26,7 @@ scheduler: Scheduler | None = None
 class NewsRequest(BaseModel):
     symbol: str
     text: str
+    model: str | None = None
 
 class BacktestRequest(BaseModel):
     symbol: str
@@ -43,7 +44,7 @@ def ui():
 @app.post("/analyze/news")
 def analyze_news(req: NewsRequest):
     logger.info(f"analyze_news: {req.symbol}")
-    result = analyzer.analyze_news(req.symbol, req.text)
+    result = analyzer.analyze_news(req.symbol, req.text, req.model)
     return {"symbol": req.symbol, **result}
 
 @app.post("/analyze/factor")
