@@ -1,6 +1,7 @@
 import json
 import re
 import os
+import time
 from typing import Any
 
 import openai
@@ -8,6 +9,12 @@ from log import logger
 
 
 _JSON_RE = re.compile(r"\{[\s\S]*\}", re.MULTILINE)
+_DEFAULT_RESULT = {
+    "sentiment_score": 0.0,
+    "impact_level": "低",
+    "reasoning": "AI 暂不可用，已降级",
+    "confidence": 0.0,
+}
 
 
 def _strip_json(content: str) -> str:
@@ -51,15 +58,35 @@ class AIAnalyzer:
         self.model = model
 
     def _call(self, prompt: str, model: str | None = None) -> str:
-        resp = self.client.chat.completions.create(
-            model=model or self.model,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return resp.choices[0].message.content or ""
+        last_err: Exception | None = None
+        for attempt in range(3):
+            try:
+                resp = self.client.chat.completions.create(
+                    model=model or self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+                return resp.choices[0].message.content or ""
+            except Exception as e:
+                last_err = e
+                msg = str(e)
+                is_overload = "503" in msg or "cpu overloaded" in msg or "rate limit" in msg.lower()
+                if is_overload and attempt < 2:
+                    wait = 2 ** attempt
+                    logger.warning(f"AI overload, retry in {wait}s (attempt {attempt+1}/3)")
+                    time.sleep(wait)
+                    continue
+                raise
+        raise last_err or RuntimeError("AI call failed")
 
     def analyze_news(
         self, symbol: str, news_text: str, model: str | None = None
     ) -> dict[str, Any]:
+        import hashlib
+        cache_key = f"ai:news:{hashlib.md5(f'{symbol}|{model or self.model}|{news_text}'.encode()).hexdigest()}"
+        from core.cache import cache
+        cached = cache.get(cache_key)
+        if cached:
+            return cached
         prompt = f"""你是一名严谨的金融分析助手。请分析以下新闻对{symbol}价格的潜在影响。
 
 严格要求：
@@ -79,15 +106,13 @@ class AIAnalyzer:
 """
         try:
             content = self._call(prompt, model)
-            return _safe_json(content)
+            result = _safe_json(content)
+            if result.get("reasoning") != _DEFAULT_RESULT["reasoning"] or result.get("confidence", 0) > 0:
+                cache.set(cache_key, result, ttl=3600)
+            return result
         except Exception as e:
             logger.error(f"analyze_news failed: {e}")
-            return {
-                "sentiment_score": 0.0,
-                "impact_level": "低",
-                "reasoning": f"分析失败: {e}",
-                "confidence": 0.0,
-            }
+            return _DEFAULT_RESULT
 
     def generate_factor(
         self, symbol: str, metrics: dict[str, Any]
