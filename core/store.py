@@ -182,7 +182,7 @@ class DataStore:
 
 
 class DataIngest:
-    def __init__(self, exchange_name: str = "binance"):
+    def __init__(self, exchange_name: str = "okx"):
         self.exchange = getattr(ccxt, exchange_name)({"enableRateLimit": True})
         self.store = DataStore()
 

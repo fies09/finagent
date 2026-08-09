@@ -3,7 +3,7 @@ import os
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://cloud.yiyongai.cn/v1")
 AI_MODEL = os.getenv("AI_MODEL", "claude-sonnet-5")
-EXCHANGE = os.getenv("EXCHANGE", "binance")
+EXCHANGE = os.getenv("EXCHANGE", "okx")
 SYMBOLS = os.getenv("SYMBOLS", "BTC/USDT,ETH/USDT,SOL/USDT")
 DATA_DIR = os.getenv("DATA_DIR", "./data")
 REPORT_DIR = os.getenv("REPORT_DIR", "./reports")
