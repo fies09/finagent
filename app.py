@@ -83,6 +83,9 @@ def analyze_news(req: NewsRequest):
 def analyze_factor(symbol: str = Query(..., description="交易对，如 BTC/USDT")):
     logger.info(f"analyze_factor: {symbol}")
     df = store.load_ohlcv(symbol, ingest.exchange.name)
+    if df.empty or len(df) < 25:
+        ingest.backfill(symbol, timeframe="1h", days=90)
+        df = store.load_ohlcv(symbol, ingest.exchange.name)
     if df.empty:
         logger.warning(f"analyze_factor no data: {symbol}")
         raise HTTPException(status_code=404, detail="no data")
@@ -102,7 +105,11 @@ def run_backtest(req: BacktestRequest):
     logger.info(f"backtest: {req.symbol}, days={req.days}")
     df = store.load_ohlcv(req.symbol, ingest.exchange.name)
     if df.empty or len(df) < 50:
-        raise HTTPException(status_code=404, detail="insufficient data")
+        logger.info(f"backfill {req.symbol} for backtest")
+        ingest.backfill(req.symbol, timeframe="1h", days=req.days)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 50:
+        raise HTTPException(status_code=404, detail="insufficient data after backfill")
     df["ai_score"] = 0.0
     df["ai_confidence"] = 0.0
     engine = BacktestEngine()
@@ -195,6 +202,9 @@ def latest_signal(symbol: str = "BTC/USDT"):
 @app.get("/factor/summary")
 def factor_summary(symbol: str = "BTC/USDT"):
     df = store.load_ohlcv(symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        ingest.backfill(symbol, timeframe="1h", days=90)
+        df = store.load_ohlcv(symbol, ingest.exchange.name)
     if df.empty:
         raise HTTPException(status_code=404, detail="no data")
     return factor_engine.summary(df)
@@ -203,6 +213,9 @@ def factor_summary(symbol: str = "BTC/USDT"):
 @app.post("/backtest/vbt")
 def backtest_vbt(req: BacktestRequest):
     df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 60:
+        ingest.backfill(req.symbol, timeframe="1h", days=req.days)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
     if df.empty or len(df) < 60:
         raise HTTPException(status_code=404, detail="insufficient data (need >=60 rows)")
     df = factor_engine.generate_signals(df)
@@ -222,9 +235,12 @@ def portfolio_optimize(method: str = "max_sharpe"):
     prices = pd.DataFrame()
     for s in symbols:
         df = store.load_ohlcv(s, ingest.exchange.name)
+        if df.empty or len(df) < 30:
+            ingest.backfill(s, timeframe="1h", days=90)
+            df = store.load_ohlcv(s, ingest.exchange.name)
         if not df.empty:
             prices[s] = df.set_index("timestamp")["close"] if "timestamp" in df.columns else df["close"]
-    if prices.empty:
+    if prices.empty or prices.shape[1] == 0:
         raise HTTPException(status_code=404, detail="no price data")
     return optimizer.optimize(prices, method=method)
 

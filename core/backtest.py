@@ -87,7 +87,10 @@ class BacktestEngine:
     def add_data(self, df: pd.DataFrame, symbol: str) -> None:
         df = df.copy()
         if not pd.api.types.is_datetime64_any_dtype(df["timestamp"]):
-            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            try:
+                df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            except (ValueError, TypeError):
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
         feed = AISignalData(
             dataname=df,
             datetime="timestamp",
