@@ -70,7 +70,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <nav class="nav">
 <a href="#dashboard">仪表盘</a>
 <a href="#analysis">AI分析</a>
+<a href="#forecast">时序预测</a>
 <a href="#backtest">回测</a>
+<a href="#live">实盘交易</a>
 <a href="#scheduler">调度器</a>
 <a href="#logs">日志</a>
 </nav>
@@ -79,7 +81,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tabs">
 <div class="tab active" onclick="switchTab('dashboard')">仪表盘</div>
 <div class="tab" onclick="switchTab('analysis')">AI分析</div>
+<div class="tab" onclick="switchTab('forecast')">时序预测</div>
 <div class="tab" onclick="switchTab('backtest')">回测引擎</div>
+<div class="tab" onclick="switchTab('live')">实盘交易</div>
 <div class="tab" onclick="switchTab('scheduler')">调度器</div>
 <div class="tab" onclick="switchTab('logs')">系统日志</div>
 </div>
@@ -298,6 +302,115 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </div>
 </div>
 
+<div id="forecast" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>NHITS 时序预测</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="forecast-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>预测步数（小时）</label>
+<input type="number" id="forecast-horizon" value="12" min="1" max="48">
+</div>
+<div class="input-group">
+<label>输入窗口（天）</label>
+<input type="number" id="forecast-input-days" value="7" min="3" max="30">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runForecast()">
+<span id="forecast-loading" style="display:none" class="loading"></span>
+运行预测
+</button>
+</div>
+<div class="result-box" id="forecast-result">点击"运行预测"查看 NHITS 模型预测结果（首次运行会下载模型权重）</div>
+</div>
+</div>
+</div>
+
+<div id="live" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>实盘交易连接</h3>
+<div class="input-group">
+<label>API Key（可选，留空使用环境变量）</label>
+<input type="text" id="live-api-key" placeholder="EXCHANGE_API_KEY">
+</div>
+<div class="input-group">
+<label>Secret（可选）</label>
+<input type="text" id="live-secret" placeholder="EXCHANGE_SECRET">
+</div>
+<div class="input-group">
+<label>Password（okx 必填，其他可选）</label>
+<input type="text" id="live-password" placeholder="EXCHANGE_PASSWORD">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="liveConnect()">
+<span id="live-connect-loading" style="display:none" class="loading"></span>
+连接交易所
+</button>
+<button class="btn btn-secondary" onclick="liveDisconnect()">断开连接</button>
+</div>
+<div class="result-box" id="live-connect-result">未连接</div>
+</div>
+
+<div class="card full-width">
+<h3>账户余额</h3>
+<div class="input-group">
+<label>币种</label>
+<input type="text" id="live-currency" value="USDT">
+</div>
+<div class="btn-group">
+<button class="btn btn-secondary" onclick="liveBalance()">查询余额</button>
+</div>
+<div class="result-box" id="live-balance-result">先连接交易所，再查询</div>
+</div>
+
+<div class="card full-width">
+<h3>下单</h3>
+<div class="input-group">
+<label>交易对</label>
+<input type="text" id="live-order-symbol" value="BTC/USDT">
+</div>
+<div class="input-group">
+<label>方向</label>
+<select id="live-order-side">
+<option value="buy">buy</option>
+<option value="sell">sell</option>
+</select>
+</div>
+<div class="input-group">
+<label>数量</label>
+<input type="number" id="live-order-amount" value="0.001" step="0.001">
+</div>
+<div class="input-group">
+<label>价格（限价单必填，市价单留空）</label>
+<input type="number" id="live-order-price" placeholder="market order">
+</div>
+<div class="input-group">
+<label>订单类型</label>
+<select id="live-order-type">
+<option value="market">market</option>
+<option value="limit">limit</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="liveOrder()">
+<span id="live-order-loading" style="display:none" class="loading"></span>
+下单
+</button>
+<button class="btn btn-secondary" onclick="liveOrders()">查询未成交</button>
+</div>
+<div class="result-box" id="live-order-result">先连接交易所，再下单</div>
+</div>
+</div>
+</div>
+
 <div id="scheduler" class="tab-content">
 <div class="grid">
 <div class="card full-width">
@@ -468,6 +581,85 @@ setLoading('feedback-loading', true);
 const result = await apiCall(`/feedback/trades?days=${days}`);
 setLoading('feedback-loading', false);
 document.getElementById('feedback-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runForecast() {
+const symbol = document.getElementById('forecast-symbol').value;
+const horizon = parseInt(document.getElementById('forecast-horizon').value);
+const input_days = parseInt(document.getElementById('forecast-input-days').value);
+setLoading('forecast-loading', true);
+const result = await apiCall('/forecast', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, horizon, input_days })
+});
+setLoading('forecast-loading', false);
+if (result.error) {
+document.getElementById('forecast-result').textContent = `错误: ${result.error}`;
+return;
+}
+const trend = result.trend || 'unknown';
+const arrow = trend === 'bullish' ? '↑' : trend === 'bearish' ? '↓' : '→';
+const text = `引擎: ${result.engine}\n` +
+`当前价格: ${result.last_close}\n` +
+`预测方向: ${trend} ${arrow}\n` +
+`预期变化: ${result.expected_change_pct}%\n` +
+`预测步数: ${result.horizon}\n` +
+`预测序列:\n${(result.predictions || []).map((p, i) => `  +${i+1}h: ${p}`).join('\n')}`;
+document.getElementById('forecast-result').textContent = text;
+}
+
+async function liveConnect() {
+const api_key = document.getElementById('live-api-key').value;
+const secret = document.getElementById('live-secret').value;
+const password = document.getElementById('live-password').value;
+setLoading('live-connect-loading', true);
+const result = await apiCall('/live/connect?api_key=' + encodeURIComponent(api_key) + '&secret=' + encodeURIComponent(secret) + '&password=' + encodeURIComponent(password), { method: 'POST' });
+setLoading('live-connect-loading', false);
+document.getElementById('live-connect-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function liveDisconnect() {
+const result = await apiCall('/live/disconnect', { method: 'POST' });
+document.getElementById('live-connect-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function liveBalance() {
+const currency = document.getElementById('live-currency').value || 'USDT';
+const result = await apiCall(`/live/balance?currency=${encodeURIComponent(currency)}`);
+if (result.error) {
+document.getElementById('live-balance-result').textContent = `错误: ${result.error}`;
+return;
+}
+const text = `币种: ${result.currency}\n` +
+`可用: ${result.free}\n` +
+`冻结: ${result.used}\n` +
+`总计: ${result.total}`;
+document.getElementById('live-balance-result').textContent = text;
+}
+
+async function liveOrder() {
+const symbol = document.getElementById('live-order-symbol').value;
+const side = document.getElementById('live-order-side').value;
+const amount = parseFloat(document.getElementById('live-order-amount').value);
+const order_type = document.getElementById('live-order-type').value;
+const priceVal = document.getElementById('live-order-price').value;
+const body = { symbol, side, amount, order_type };
+if (order_type === 'limit' && priceVal) body.price = parseFloat(priceVal);
+setLoading('live-order-loading', true);
+const result = await apiCall('/live/order', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify(body)
+});
+setLoading('live-order-loading', false);
+document.getElementById('live-order-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function liveOrders() {
+const symbol = document.getElementById('live-order-symbol').value;
+const result = await apiCall(`/live/orders?symbol=${encodeURIComponent(symbol)}`);
+document.getElementById('live-order-result').textContent = JSON.stringify(result, null, 2);
 }
 
 async function fetchLogs() {
