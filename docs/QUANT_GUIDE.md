@@ -200,9 +200,9 @@
 
 ## 七、FinAgent 待落地 ⏳
 
-- [ ] 真实 ccxt OHLCV（网络可达性）
-- [ ] neuralforecast 时序预测
-- [ ] ccxt.pro 实盘下单
+- [x] 真实 ccxt OHLCV（网络可达性）
+- [x] neuralforecast 时序预测
+- [x] ccxt.pro 实盘下单
 - [ ] optuna 超参搜索
 - [ ] polars 加速大数据处理
 - [ ] plotly 交互图表前端

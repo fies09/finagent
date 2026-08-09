@@ -20,9 +20,11 @@ from core.scheduler import Scheduler
 from core.store import DataIngest, DataStore
 from core.tracker import ExperimentTracker
 from core.vbt_engine import VectorBacktest
+from core.forecaster import TimeSeriesForecaster
+from core.live_trader import LiveTrader
 from config.settings import HOST, PORT
 from log import logger
-import pandas as pd
+import os
 
 app = FastAPI(title="FinAgent", version="0.1.0")
 app.add_middleware(
@@ -60,6 +62,24 @@ class BacktestRequest(BaseModel):
     symbol: str
     days: int = 90
     params: dict | None = None
+
+
+class ForecastRequest(BaseModel):
+    symbol: str
+    horizon: int = 12
+    input_days: int = 7
+
+
+class OrderRequest(BaseModel):
+    symbol: str
+    side: str
+    amount: float
+    price: float | None = None
+    order_type: str = "market"
+
+
+forecaster = TimeSeriesForecaster()
+live_trader: LiveTrader | None = None
 
 @app.get("/")
 def root():
@@ -294,6 +314,63 @@ def news_analyze_batch(symbol: str = "BTC/USDT", limit: int = 5, model: str | No
         r = analyzer.analyze_news(symbol, it.get("text", ""), model)
         results.append({"title": it.get("title", ""), "url": it.get("url", ""), **r})
     return {"symbol": symbol, "results": results}
+
+
+@app.post("/forecast")
+def forecast_price(req: ForecastRequest):
+    logger.info(f"forecast: {req.symbol}, horizon={req.horizon}")
+    df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 50:
+        ingest.backfill(req.symbol, timeframe="1h", days=req.input_days)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    return forecaster.predict(df, req.symbol)
+
+
+@app.post("/live/connect")
+async def live_connect(api_key: str = "", secret: str = "", password: str = ""):
+    global live_trader
+    if live_trader:
+        await live_trader.disconnect()
+    live_trader = LiveTrader(
+        exchange_name=os.getenv("EXCHANGE", "okx"),
+        api_key=api_key or os.getenv("EXCHANGE_API_KEY", ""),
+        secret=secret or os.getenv("EXCHANGE_SECRET", ""),
+        password=password or os.getenv("EXCHANGE_PASSWORD", ""),
+    )
+    await live_trader.connect()
+    return {"status": "connected", "exchange": live_trader.exchange_name}
+
+
+@app.post("/live/disconnect")
+async def live_disconnect():
+    global live_trader
+    if live_trader:
+        await live_trader.disconnect()
+        live_trader = None
+    return {"status": "disconnected"}
+
+
+@app.get("/live/balance")
+async def live_balance(currency: str = "USDT"):
+    if not live_trader:
+        raise HTTPException(status_code=400, detail="not connected")
+    return await live_trader.get_balance(currency)
+
+
+@app.post("/live/order")
+async def live_order(req: OrderRequest):
+    if not live_trader:
+        raise HTTPException(status_code=400, detail="not connected")
+    return await live_trader.create_order(
+        req.symbol, req.side, req.amount, req.price, req.order_type
+    )
+
+
+@app.get("/live/orders")
+async def live_orders(symbol: str | None = None):
+    if not live_trader:
+        raise HTTPException(status_code=400, detail="not connected")
+    return {"orders": await live_trader.fetch_open_orders(symbol)}
 
 
 if __name__ == "__main__":
