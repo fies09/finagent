@@ -74,6 +74,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <a href="#forecast">时序预测</a>
 <a href="#backtest">回测</a>
 <a href="#tune">超参搜索</a>
+<a href="#advanced">高级分析</a>
 <a href="#chart">图表</a>
 <a href="#stock">美股</a>
 <a href="#live">实盘交易</a>
@@ -88,6 +89,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tab" onclick="switchTab('forecast')">时序预测</div>
 <div class="tab" onclick="switchTab('backtest')">回测引擎</div>
 <div class="tab" onclick="switchTab('tune')">超参搜索</div>
+<div class="tab" onclick="switchTab('advanced')">高级分析</div>
 <div class="tab" onclick="switchTab('chart')">图表</div>
 <div class="tab" onclick="switchTab('stock')">美股</div>
 <div class="tab" onclick="switchTab('live')">实盘交易</div>
@@ -363,6 +365,77 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </button>
 </div>
 <div class="result-box" id="tune-result">点击"搜索最优参数"自动寻找快/慢均线最佳组合</div>
+</div>
+</div>
+</div>
+
+<div id="advanced" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>向量化回测（vectorbt）</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="vbt-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>回测天数</label>
+<input type="number" id="vbt-days" value="90" min="30" max="365">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runVbt()">
+<span id="vbt-loading" style="display:none" class="loading"></span>
+运行向量化回测
+</button>
+</div>
+<div class="result-box" id="vbt-result">使用 vectorbt 引擎基于 pandas-ta 信号大规模回测</div>
+</div>
+
+<div class="card full-width">
+<h3>组合优化（pyportfolioopt）</h3>
+<div class="input-group">
+<label>优化方法</label>
+<select id="portfolio-method">
+<option value="max_sharpe">最大夏普</option>
+<option value="min_volatility">最小波动</option>
+<option value="risk_parity">风险平价</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runPortfolio()">运行组合优化</button>
+</div>
+<div class="result-box" id="portfolio-result">基于 BTC/ETH/SOL 历史收益求最优权重（Markowitz）</div>
+</div>
+
+<div class="card full-width">
+<h3>因子汇总</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="factor-sum-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-secondary" onclick="loadFactorSummary()">查看因子汇总</button>
+</div>
+<div class="result-box" id="factor-sum-result">查看 RSI/MACD/BB/ATR 等指标的当前读数</div>
+</div>
+
+<div class="card full-width">
+<h3>MLflow 实验追踪</h3>
+<div class="input-group">
+<label>显示条数</label>
+<input type="number" id="exp-limit" value="20" min="5" max="100">
+</div>
+<div class="btn-group">
+<button class="btn btn-secondary" onclick="listExperiments()">查看最近实验</button>
+</div>
+<div class="result-box" id="exp-result">查看最近 N 次回测/调优实验记录</div>
 </div>
 </div>
 </div>
@@ -806,6 +879,37 @@ async function stockQuote() {
 const symbol = document.getElementById('stock-symbol').value;
 const result = await apiCall(`/stock/quote?symbol=${encodeURIComponent(symbol)}`);
 document.getElementById('stock-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runVbt() {
+const symbol = document.getElementById('vbt-symbol').value;
+const days = parseInt(document.getElementById('vbt-days').value);
+setLoading('vbt-loading', true);
+const result = await apiCall('/backtest/vbt', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, days })
+});
+setLoading('vbt-loading', false);
+document.getElementById('vbt-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runPortfolio() {
+const method = document.getElementById('portfolio-method').value;
+const result = await apiCall(`/portfolio/optimize?method=${method}`);
+document.getElementById('portfolio-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function loadFactorSummary() {
+const symbol = document.getElementById('factor-sum-symbol').value;
+const result = await apiCall(`/factor/summary?symbol=${encodeURIComponent(symbol)}`);
+document.getElementById('factor-sum-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function listExperiments() {
+const limit = parseInt(document.getElementById('exp-limit').value);
+const result = await apiCall(`/experiments/runs?limit=${limit}`);
+document.getElementById('exp-result').textContent = JSON.stringify(result, null, 2);
 }
 
 async function fetchLogs() {

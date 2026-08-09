@@ -303,4 +303,86 @@
 
 ---
 
+## 十、FinAgent 模块全景（功能 ↔ 技术栈 ↔ 金融领域）
+
+### 10.1 已落地 17 模块
+
+| # | 功能模块 | 后端文件 | 端点 | 前端 tab | 金融领域 | 核心技术栈 |
+|---|---|---|---|---|---|---|
+| 1 | AI 新闻情绪分析 | core/ai_analyzer.py | /analyze/news /news/analyze | AI分析 | 事件驱动/NLP | Claude Sonnet 5 + Redis 缓存 |
+| 2 | AI 因子生成 | core/ai_analyzer.py | /analyze/factor | AI分析 | 多因子模型 | Claude Sonnet 5 |
+| 3 | 技术指标因子库 | core/factor.py | /factor/summary | 高级分析 | 技术分析 | pandas-ta (150+) |
+| 4 | 事件驱动回测 | core/backtest.py | /backtest | 回测引擎 | 经典 CTA | backtrader |
+| 5 | 向量化回测 | core/vbt_engine.py | /backtest/vbt | 高级分析 | 大规模扫描 | vectorbt + pandas-ta |
+| 6 | 组合优化 | core/portfolio.py | /portfolio/optimize | 高级分析 | 现代资产组合 | pyportfolioopt |
+| 7 | 实验追踪 | core/tracker.py | /experiments/runs | 高级分析 | ML Ops | mlflow (sqlite) |
+| 8 | 风险管理 | core/risk.py | /risk/status | 仪表盘 | 仓位/回撤 | 自研规则引擎 |
+| 9 | 交易反馈 | core/feedback.py | /feedback/trades | 调度器 | 策略复盘 | pandas |
+| 10 | 任务调度 | core/scheduler.py | /scheduler/start /scheduler/stop | 调度器 | 自动化 | APScheduler |
+| 11 | 时序预测 | core/forecaster.py | /forecast | 时序预测 | 时序预测 | neuralforecast/NHITS |
+| 12 | 超参搜索 | core/optuna_tuner.py | /tune | 超参搜索 | 策略调优 | optuna |
+| 13 | 交互图表 | core/charts.py | /chart/candlestick | 图表 | 可视化 | plotly |
+| 14 | 美股行情 | core/stock_ingest.py | /stock/fetch /stock/quote | 美股 | 跨市场 | yfinance |
+| 15 | 实盘交易 | core/live_trader.py | /live/* | 实盘交易 | 执行 | ccxt.pro (okx) |
+| 16 | 系统日志 | core/log_store.py | /logs /logs/clear | 系统日志 | 监控 | loguru + sqlite |
+| 17 | 行情获取 | core/store.py | /market/price | 仪表盘 | 数据层 | ccxt (okx) |
+
+### 10.2 待落地（pip 镜像 503 暂未安装）
+
+| 模块 | 用途 | 阻塞项 |
+|---|---|---|
+| polars 加速 | 替代 pandas，5-10x OHLCV 处理 | pip 镜像源 503 |
+| nautilus_trader | Rust 内核生产级回测/撮合引擎 | pip 镜像源 503 |
+
+### 10.3 后续可继续追加的金融技术栈
+
+| 金融领域 | 推荐库 | 用途 | 优先级 |
+|---|---|---|---|
+| 期权定价 | py_vollib / QuantLib | Black-Scholes / Greeks / 波动率曲面 | 中 |
+| 固定收益 | QuantLib | 收益率曲线 / 久期 / 凸性 | 中 |
+| 统计套利 | statsmodels / arch | 协整检验 / GARCH / VAR | 中 |
+| 金融情感 | finbert-tone | 预训练 BERT 替代 LLM 判情绪 | 高 |
+| 因子分析 | alphalens-reloaded | IC / 分层收益 / 换手率评估 | 高 |
+| 回测报告 | quantstats | 一键生成 tear sheet | 高 |
+| 技术指标 | ta-lib | C 实现，速度更快 | 中 |
+| 风控 | riskfolio-lib | CVaR / 风险归因 / 最大回撤优化 | 中 |
+| Tick 数据 | arctic / questdb | 高频 tick 存储 | 低 |
+| 分布式任务 | rq / celery | 多 worker 并行 | 低 |
+| 实时行情 | stream-zip / asyncio-ccxt | WebSocket 推送 | 中 |
+| 时序数据库 | timescaleDB / questdb | tick 级数据 | 低 |
+| 因子存储 | arctic / dolphindb | 高频因子持久化 | 低 |
+| 多市场数据 | akshare / tushare / finnhub | A 股 / 美股 / 外汇 | 高 |
+| 报告渲染 | jinja2 + weasyprint | PDF 月报/周报 | 低 |
+
+### 10.4 金融知识体系深化
+
+#### 10.4.1 资产类别
+- 股票：A 股 / 港股 / 美股（多市场已覆盖：加密 + 美股）
+- 期货：商品期货 / 金融期货 / 国债期货（待对接 CTPMini）
+- 期权：ETF 期权 / 商品期权 / 股指期权（待 QuantLib）
+- 数字货币：现货 / 合约 / 杠杆代币（已覆盖现货 + 实盘）
+- 外汇：主要货币对（ccxt 已支持部分）
+
+#### 10.4.2 量化策略大类
+1. **趋势跟踪**：双均线 / Donchian / 海龟 / Aberration
+2. **均值回归**：布林带 / RSI / Pair trading / Statistical arb
+3. **套利**：跨期 / 跨市 / 跨品种 / 三角套利
+4. **统计套利**：协整 / PCA / 协方差矩阵
+5. **动量**：截面动量 / 时序动量 / 资金流
+6. **做市**：Avellaneda-Stoikov / 库存模型
+7. **事件驱动**：财报 / 公告 / 宏观数据
+8. **机器学习**：XGBoost / LSTM / Transformer / RL
+
+#### 10.4.3 风控层级
+- **事前**：信号过滤 / 仓位限额 / 黑名单
+- **事中**：止损 / 移动止盈 / 波动率倒数仓位
+- **事后**：回撤熔断 / 复盘 / 策略下线
+
+#### 10.4.4 回测陷阱
+- 未来函数 / 偷价 / 幸存者偏差 / 过拟合
+- 滑点 / 资金费率 / 手续费 / 冲击成本
+- 多周期多品种 / Walk-forward / Purged K-Fold
+
+---
+
 **持续更新**：每完成一个模块后回到此文档打勾 + 补充实战经验。
