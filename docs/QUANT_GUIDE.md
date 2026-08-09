@@ -237,4 +237,70 @@
 
 ---
 
+## 九、参考方案技术栈补充（来自《AI辅助研究与严格回测实施方案》）
+
+### 9.1 数据层
+| 工具 | 覆盖 | 特点 |
+|---|---|---|
+| yfinance | 美股/部分加密 | 零门槛 |
+| AKShare | A股/期货/宏观 | 国内首选 |
+| Tushare Pro | A股财务/龙虎榜 | 高级数据需积分 |
+| ccxt | 100+ 加密交易所 | ✅ FinAgent 已集成（默认 okx） |
+| baostock | A股历史 | 完全免费免注册 |
+| JQData/RiceQuant | A股一站式 | 有使用门槛 |
+
+### 9.2 存储层
+- 行情时序：**InfluxDB / ClickHouse**
+- 财务结构化：**PostgreSQL / MySQL**
+- 新闻原文：**MongoDB / Parquet**
+- 向量检索：**Chroma / Milvus / FAISS**
+- MVP 起步：**SQLite + Parquet**（FinAgent 当前用 SQLite）
+
+### 9.3 回测框架
+| 框架 | 定位 |
+|---|---|
+| **Backtrader** | 事件驱动，资料最多（FinAgent 已用） |
+| **vectorbt** | 向量化，参数扫描快（FinAgent 已集成） |
+| **vn.py** | A股实盘 |
+| **QLib** | AI 量化一体化 |
+| **Zipline-reloaded** | Quantopian 遗产 |
+
+### 9.4 因子分析工具
+- **Alphalens**：IC、分层收益、换手率
+- **empyrical**：Sharpe/MaxDD/Calmar
+
+### 9.5 基础设施
+- 调度：**APScheduler**（✅ 已集成）/ **Airflow**
+- 实验管理：**MLflow**（✅ 已集成）
+- 日志：**loguru + 企业微信/Telegram**（✅ 已集成 system_logs）
+- 容器化：**Docker**
+
+### 9.6 严格回测必做 9 项
+1. 样本外测试
+2. Walk-forward 滚动
+3. Purged K-Fold（避免信息泄露）
+4. 手续费 + 滑点
+5. 最大回撤
+6. 多市场环境（牛/熊/震）
+7. 胜率 vs 盈亏比
+8. 参数敏感性
+9. 蒙特卡洛压力测试
+
+### 9.7 组合风控
+- 相关性矩阵
+- 波动率目标仓位（Vol Targeting）
+- 组合 VaR / 最大回撤熔断
+- 凯利公式仓位
+
+### 9.8 实施路径
+| 阶段 | 内容 | 周期 |
+|---|---|---|
+| 1 | 数据 + 基础回测 | 1-2 周 |
+| 2 | AI 情绪打分 + Alphalens | 2-3 周 |
+| 3 | 样本外 + Walk-forward | 1-2 月 |
+| 4 | 日志/告警/模拟盘 | 3-6 月 |
+| 5 | 极小额实盘 + 复盘 | 长期 |
+
+---
+
 **持续更新**：每完成一个模块后回到此文档打勾 + 补充实战经验。
