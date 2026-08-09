@@ -26,6 +26,8 @@ from core.stock_ingest import StockIngest
 from core.ashare_ingest import AShareIngest
 from core.factor_eval import FactorEvaluator
 from core.report import ReportBuilder
+from core.polars_engine import FastDataEngine
+from core.nautilus_engine import NautilusEngine
 from core.forecaster import TimeSeriesForecaster
 from core.live_trader import LiveTrader
 from config.settings import HOST, PORT
@@ -114,6 +116,8 @@ stock_ingest = StockIngest()
 ashare_ingest = AShareIngest()
 factor_evaluator = FactorEvaluator()
 report_builder = ReportBuilder()
+fast_engine = FastDataEngine()
+nautilus_engine = NautilusEngine()
 
 @app.get("/")
 def root():
@@ -502,6 +506,49 @@ def report_generate(req: BacktestRequest):
     if df.empty or len(df) < 30:
         raise HTTPException(status_code=404, detail="insufficient data")
     return report_builder.generate(df, req.symbol)
+
+
+@app.get("/polars/stats")
+def polars_stats(symbol: str = "BTC/USDT"):
+    df = store.load_ohlcv(symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        ingest.backfill(symbol, timeframe="1h", days=90)
+        df = store.load_ohlcv(symbol, ingest.exchange.name)
+    return fast_engine.compute_returns(df, symbol)
+
+
+@app.get("/polars/corr")
+def polars_corr():
+    symbols = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    data_map = {}
+    for s in symbols:
+        df = store.load_ohlcv(s, ingest.exchange.name)
+        if df.empty or len(df) < 30:
+            ingest.backfill(s, timeframe="1h", days=90)
+            df = store.load_ohlcv(s, ingest.exchange.name)
+        if not df.empty:
+            df = df.copy()
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+            data_map[s] = df
+    return fast_engine.correlation_matrix(data_map)
+
+
+@app.post("/nautilus/backtest")
+def nautilus_backtest(req: BacktestRequest):
+    df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        ingest.backfill(req.symbol, timeframe="1h", days=req.days)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        raise HTTPException(status_code=404, detail="insufficient data")
+    bars = df.to_dict(orient="records")
+    params = (req.params or {})
+    return nautilus_engine.backtest_sma_cross(
+        bars,
+        symbol_str=f"{req.symbol.replace('/', '-')}.OKX",
+        fast=int(params.get("fast", 10)),
+        slow=int(params.get("slow", 30)),
+    )
 
 
 if __name__ == "__main__":

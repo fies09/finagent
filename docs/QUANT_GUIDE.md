@@ -209,8 +209,8 @@
 - [x] quantstats 回测报告（core/report.py + /report/generate）
 - [x] akshare A股接入（core/ashare_ingest.py + /ashare/fetch）
 - [x] Alphalens 因子评估（core/factor_eval.py + /factor/evaluate）
-- [ ] polars 加速大数据处理（pip 镜像 503 暂未安装）
-- [ ] nautilus_trader 生产级回测引擎（pip 镜像 503 暂未安装）
+- [x] polars 加速大数据处理（core/polars_engine.py + /polars/stats /polars/corr）
+- [x] nautilus_trader 生产级回测引擎（core/nautilus_engine.py + /nautilus/backtest）
 
 ---
 

@@ -80,6 +80,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <a href="#ashare">A股</a>
 <a href="#factor-eval">因子评估</a>
 <a href="#report">回测报告</a>
+<a href="#perf">高性能</a>
 <a href="#live">实盘交易</a>
 <a href="#scheduler">调度器</a>
 <a href="#logs">日志</a>
@@ -98,6 +99,7 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tab" onclick="switchTab('ashare')">A股</div>
 <div class="tab" onclick="switchTab('factor-eval')">因子评估</div>
 <div class="tab" onclick="switchTab('report')">回测报告</div>
+<div class="tab" onclick="switchTab('perf')">高性能</div>
 <div class="tab" onclick="switchTab('live')">实盘交易</div>
 <div class="tab" onclick="switchTab('scheduler')">调度器</div>
 <div class="tab" onclick="switchTab('logs')">系统日志</div>
@@ -597,6 +599,57 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </div>
 </div>
 
+<div id="perf" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>Polars 高速计算</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="perf-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runPolars()">
+<span id="perf-loading" style="display:none" class="loading"></span>
+Polars 统计
+</button>
+<button class="btn btn-secondary" onclick="runCorr()">相关性矩阵</button>
+</div>
+<div class="result-box" id="perf-result">使用 polars 替代 pandas，5-10x 性能</div>
+</div>
+
+<div class="card full-width">
+<h3>Nautilus Trader 回测</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="nt-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>快线周期</label>
+<input type="number" id="nt-fast" value="10" min="3" max="50">
+</div>
+<div class="input-group">
+<label>慢线周期</label>
+<input type="number" id="nt-slow" value="30" min="10" max="100">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runNautilus()">
+<span id="nt-loading" style="display:none" class="loading"></span>
+运行 Nautilus
+</button>
+</div>
+<div class="result-box" id="nt-result">Rust 内核事件驱动回测引擎（生产级）</div>
+</div>
+</div>
+</div>
+
 <div id="live" class="tab-content">
 <div class="grid">
 <div class="card full-width">
@@ -1050,6 +1103,33 @@ setLoading('report-loading', false);
 const metrics = result.metrics || {};
 const summary = result.summary || '';
 document.getElementById('report-result').textContent = `引擎: ${result.engine}\n` + summary + `\nHTML 长度: ${result.html_length || 0}`;
+}
+
+async function runPolars() {
+const symbol = document.getElementById('perf-symbol').value;
+setLoading('perf-loading', true);
+const result = await apiCall(`/polars/stats?symbol=${encodeURIComponent(symbol)}`);
+setLoading('perf-loading', false);
+document.getElementById('perf-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runCorr() {
+const result = await apiCall('/polars/corr');
+document.getElementById('perf-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runNautilus() {
+const symbol = document.getElementById('nt-symbol').value;
+const fast = parseInt(document.getElementById('nt-fast').value);
+const slow = parseInt(document.getElementById('nt-slow').value);
+setLoading('nt-loading', true);
+const result = await apiCall('/nautilus/backtest', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, days: 90, params: { fast, slow } })
+});
+setLoading('nt-loading', false);
+document.getElementById('nt-result').textContent = JSON.stringify(result, null, 2);
 }
 
 async function fetchLogs() {
