@@ -20,6 +20,9 @@ from core.scheduler import Scheduler
 from core.store import DataIngest, DataStore
 from core.tracker import ExperimentTracker
 from core.vbt_engine import VectorBacktest
+from core.optuna_tuner import OptunaOptimizer
+from core.charts import ChartBuilder
+from core.stock_ingest import StockIngest
 from core.forecaster import TimeSeriesForecaster
 from core.live_trader import LiveTrader
 from config.settings import HOST, PORT
@@ -78,8 +81,22 @@ class OrderRequest(BaseModel):
     order_type: str = "market"
 
 
+class TuneRequest(BaseModel):
+    symbol: str
+    trials: int = 30
+
+
+class StockRequest(BaseModel):
+    symbol: str
+    period: str = "3mo"
+    interval: str = "1d"
+
+
 forecaster = TimeSeriesForecaster()
 live_trader: LiveTrader | None = None
+optuna_tuner = OptunaOptimizer()
+chart_builder = ChartBuilder()
+stock_ingest = StockIngest()
 
 @app.get("/")
 def root():
@@ -371,6 +388,46 @@ async def live_orders(symbol: str | None = None):
     if not live_trader:
         raise HTTPException(status_code=400, detail="not connected")
     return {"orders": await live_trader.fetch_open_orders(symbol)}
+
+
+@app.post("/tune")
+def tune_strategy(req: TuneRequest):
+    logger.info(f"tune: {req.symbol}, trials={req.trials}")
+    df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 100:
+        ingest.backfill(req.symbol, timeframe="1h", days=180)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 100:
+        raise HTTPException(status_code=404, detail="insufficient data (need >=100 rows)")
+    tuner = OptunaOptimizer(n_trials=req.trials)
+    result = tuner.optimize_strategy(df, req.symbol)
+    tracker.log_backtest(
+        req.symbol,
+        params={"engine": "optuna", "trials": req.trials, **result.get("best_params", {})},
+        metrics={"sharpe": result.get("best_sharpe", 0)},
+        tags={"symbol": req.symbol, "engine": "optuna"},
+    )
+    return result
+
+
+@app.get("/chart/candlestick")
+def chart_candlestick(symbol: str = "BTC/USDT", limit: int = 200):
+    df = store.load_ohlcv(symbol, ingest.exchange.name)
+    if df.empty or len(df) < limit // 2:
+        ingest.backfill(symbol, timeframe="1h", days=90)
+        df = store.load_ohlcv(symbol, ingest.exchange.name)
+    return chart_builder.candlestick(df, symbol, limit=limit)
+
+
+@app.post("/stock/fetch")
+def stock_fetch(req: StockRequest):
+    df = stock_ingest.fetch(req.symbol, period=req.period, interval=req.interval)
+    return {"symbol": req.symbol, "rows": len(df), "data": df.head(50).to_dict(orient="records") if not df.empty else []}
+
+
+@app.get("/stock/quote")
+def stock_quote(symbol: str):
+    return stock_ingest.quote(symbol)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FinAgent - AI量化交易分析系统</title>
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js" charset="utf-8"></script>
 <style>
 :root{--bg:#0a0e1a;--card:#111827;--border:#1a2332;--text:#e0e6ed;--muted:#8b9dc3;--accent:#00d4aa;--accent-hover:#00b894;--success:#22c55e;--danger:#ef4444;--warning:#f59e0b;}
 @media (prefers-color-scheme: light){:root{--bg:#f6f8fa;--card:#fff;--border:#d1d5db;--text:#111827;--muted:#6b7280;}}
@@ -72,6 +73,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <a href="#analysis">AI分析</a>
 <a href="#forecast">时序预测</a>
 <a href="#backtest">回测</a>
+<a href="#tune">超参搜索</a>
+<a href="#chart">图表</a>
+<a href="#stock">美股</a>
 <a href="#live">实盘交易</a>
 <a href="#scheduler">调度器</a>
 <a href="#logs">日志</a>
@@ -83,6 +87,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tab" onclick="switchTab('analysis')">AI分析</div>
 <div class="tab" onclick="switchTab('forecast')">时序预测</div>
 <div class="tab" onclick="switchTab('backtest')">回测引擎</div>
+<div class="tab" onclick="switchTab('tune')">超参搜索</div>
+<div class="tab" onclick="switchTab('chart')">图表</div>
+<div class="tab" onclick="switchTab('stock')">美股</div>
 <div class="tab" onclick="switchTab('live')">实盘交易</div>
 <div class="tab" onclick="switchTab('scheduler')">调度器</div>
 <div class="tab" onclick="switchTab('logs')">系统日志</div>
@@ -329,6 +336,97 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </button>
 </div>
 <div class="result-box" id="forecast-result">点击"运行预测"查看 NHITS 模型预测结果（首次运行会下载模型权重）</div>
+</div>
+</div>
+</div>
+
+<div id="tune" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>Optuna 双均线参数搜索</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="tune-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>试验次数</label>
+<input type="number" id="tune-trials" value="30" min="5" max="200">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runTune()">
+<span id="tune-loading" style="display:none" class="loading"></span>
+搜索最优参数
+</button>
+</div>
+<div class="result-box" id="tune-result">点击"搜索最优参数"自动寻找快/慢均线最佳组合</div>
+</div>
+</div>
+</div>
+
+<div id="chart" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>Plotly K线图</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="chart-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>显示 K 线数</label>
+<input type="number" id="chart-limit" value="200" min="50" max="500">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="loadChart()">
+<span id="chart-loading" style="display:none" class="loading"></span>
+加载图表
+</button>
+</div>
+<div id="chart-container" style="margin-top:15px;min-height:420px"></div>
+</div>
+</div>
+</div>
+
+<div id="stock" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>美股行情（yfinance）</h3>
+<div class="input-group">
+<label>股票代码</label>
+<input type="text" id="stock-symbol" value="AAPL">
+</div>
+<div class="input-group">
+<label>周期</label>
+<select id="stock-period">
+<option value="1mo">1 月</option>
+<option value="3mo" selected>3 月</option>
+<option value="6mo">6 月</option>
+<option value="1y">1 年</option>
+</select>
+</div>
+<div class="input-group">
+<label>间隔</label>
+<select id="stock-interval">
+<option value="1d" selected>日线</option>
+<option value="1h">小时</option>
+<option value="15m">15 分</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="stockFetch()">
+<span id="stock-loading" style="display:none" class="loading"></span>
+抓取行情
+</button>
+<button class="btn btn-secondary" onclick="stockQuote()">查最新价</button>
+</div>
+<div class="result-box" id="stock-result">点击"抓取行情"获取美股 OHLCV 数据</div>
 </div>
 </div>
 </div>
@@ -660,6 +758,54 @@ async function liveOrders() {
 const symbol = document.getElementById('live-order-symbol').value;
 const result = await apiCall(`/live/orders?symbol=${encodeURIComponent(symbol)}`);
 document.getElementById('live-order-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runTune() {
+const symbol = document.getElementById('tune-symbol').value;
+const trials = parseInt(document.getElementById('tune-trials').value);
+setLoading('tune-loading', true);
+const result = await apiCall('/tune', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, trials })
+});
+setLoading('tune-loading', false);
+document.getElementById('tune-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function loadChart() {
+const symbol = document.getElementById('chart-symbol').value;
+const limit = parseInt(document.getElementById('chart-limit').value);
+setLoading('chart-loading', true);
+const result = await apiCall(`/chart/candlestick?symbol=${encodeURIComponent(symbol)}&limit=${limit}`);
+setLoading('chart-loading', false);
+const box = document.getElementById('chart-container');
+if (result.error || !result.chart_json) {
+box.innerHTML = `<div style="color:var(--danger);padding:20px">加载失败: ${result.error || 'no chart data'}</div>`;
+return;
+}
+box.innerHTML = '<div id="plotly-div"></div>';
+Plotly.newPlot('plotly-div', result.chart_json.data, result.chart_json.layout, {responsive: true});
+}
+
+async function stockFetch() {
+const symbol = document.getElementById('stock-symbol').value;
+const period = document.getElementById('stock-period').value;
+const interval = document.getElementById('stock-interval').value;
+setLoading('stock-loading', true);
+const result = await apiCall('/stock/fetch', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, period, interval })
+});
+setLoading('stock-loading', false);
+document.getElementById('stock-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function stockQuote() {
+const symbol = document.getElementById('stock-symbol').value;
+const result = await apiCall(`/stock/quote?symbol=${encodeURIComponent(symbol)}`);
+document.getElementById('stock-result').textContent = JSON.stringify(result, null, 2);
 }
 
 async function fetchLogs() {
