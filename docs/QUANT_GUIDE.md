@@ -206,6 +206,9 @@
 - [x] optuna 超参搜索（core/optuna_tuner.py）
 - [x] plotly 交互图表前端（core/charts.py + /chart/candlestick）
 - [x] yfinance 美股扩展（core/stock_ingest.py + /stock/fetch）
+- [x] quantstats 回测报告（core/report.py + /report/generate）
+- [x] akshare A股接入（core/ashare_ingest.py + /ashare/fetch）
+- [x] Alphalens 因子评估（core/factor_eval.py + /factor/evaluate）
 - [ ] polars 加速大数据处理（pip 镜像 503 暂未安装）
 - [ ] nautilus_trader 生产级回测引擎（pip 镜像 503 暂未安装）
 

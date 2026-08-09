@@ -77,6 +77,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <a href="#advanced">高级分析</a>
 <a href="#chart">图表</a>
 <a href="#stock">美股</a>
+<a href="#ashare">A股</a>
+<a href="#factor-eval">因子评估</a>
+<a href="#report">回测报告</a>
 <a href="#live">实盘交易</a>
 <a href="#scheduler">调度器</a>
 <a href="#logs">日志</a>
@@ -92,6 +95,9 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 <div class="tab" onclick="switchTab('advanced')">高级分析</div>
 <div class="tab" onclick="switchTab('chart')">图表</div>
 <div class="tab" onclick="switchTab('stock')">美股</div>
+<div class="tab" onclick="switchTab('ashare')">A股</div>
+<div class="tab" onclick="switchTab('factor-eval')">因子评估</div>
+<div class="tab" onclick="switchTab('report')">回测报告</div>
 <div class="tab" onclick="switchTab('live')">实盘交易</div>
 <div class="tab" onclick="switchTab('scheduler')">调度器</div>
 <div class="tab" onclick="switchTab('logs')">系统日志</div>
@@ -504,6 +510,93 @@ header{display:flex;justify-content:space-between;align-items:center;padding:20p
 </div>
 </div>
 
+<div id="ashare" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>A 股行情（akshare）</h3>
+<div class="input-group">
+<label>股票代码（6位）</label>
+<input type="text" id="ashare-symbol" value="000001">
+</div>
+<div class="input-group">
+<label>开始日期（YYYYMMDD）</label>
+<input type="text" id="ashare-start" placeholder="例：20250101">
+</div>
+<div class="input-group">
+<label>结束日期（YYYYMMDD）</label>
+<input type="text" id="ashare-end" placeholder="例：20260809">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="ashareFetch()">
+<span id="ashare-loading" style="display:none" class="loading"></span>
+抓取 A 股日线
+</button>
+<button class="btn btn-secondary" onclick="ashareSpot()">全市场实时</button>
+</div>
+<div class="result-box" id="ashare-result">输入 6 位股票代码（000001 平安银行 / 600519 贵州茅台）</div>
+</div>
+</div>
+</div>
+
+<div id="factor-eval" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>因子 IC 评估（Alphalens）</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="feval-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>因子</label>
+<select id="feval-factor">
+<option value="rsi">RSI (14)</option>
+<option value="macd">MACD</option>
+<option value="momentum">动量 (24h)</option>
+<option value="returns">收益率</option>
+</select>
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runFactorEval()">
+<span id="feval-loading" style="display:none" class="loading"></span>
+评估因子有效性
+</button>
+</div>
+<div class="result-box" id="feval-result">IC > 0.05 为有效因子，> 0.1 为强因子</div>
+</div>
+</div>
+</div>
+
+<div id="report" class="tab-content">
+<div class="grid">
+<div class="card full-width">
+<h3>回测报告（quantstats）</h3>
+<div class="input-group">
+<label>交易对</label>
+<select id="report-symbol">
+<option value="BTC/USDT">BTC/USDT</option>
+<option value="ETH/USDT">ETH/USDT</option>
+<option value="SOL/USDT">SOL/USDT</option>
+</select>
+</div>
+<div class="input-group">
+<label>回测天数</label>
+<input type="number" id="report-days" value="90" min="30" max="365">
+</div>
+<div class="btn-group">
+<button class="btn btn-primary" onclick="runReport()">
+<span id="report-loading" style="display:none" class="loading"></span>
+生成报告
+</button>
+</div>
+<div class="result-box" id="report-result">点击"生成报告"输出 Sharpe/Sortino/MaxDD 等指标</div>
+</div>
+</div>
+</div>
+
 <div id="live" class="tab-content">
 <div class="grid">
 <div class="card full-width">
@@ -910,6 +1003,53 @@ async function listExperiments() {
 const limit = parseInt(document.getElementById('exp-limit').value);
 const result = await apiCall(`/experiments/runs?limit=${limit}`);
 document.getElementById('exp-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function ashareFetch() {
+const symbol = document.getElementById('ashare-symbol').value;
+const start = document.getElementById('ashare-start').value;
+const end = document.getElementById('ashare-end').value;
+setLoading('ashare-loading', true);
+const result = await apiCall('/ashare/fetch', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, start: start || null, end: end || null })
+});
+setLoading('ashare-loading', false);
+document.getElementById('ashare-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function ashareSpot() {
+const result = await apiCall('/ashare/spot');
+document.getElementById('ashare-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runFactorEval() {
+const symbol = document.getElementById('feval-symbol').value;
+const factor = document.getElementById('feval-factor').value;
+setLoading('feval-loading', true);
+const result = await apiCall('/factor/evaluate', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, factor })
+});
+setLoading('feval-loading', false);
+document.getElementById('feval-result').textContent = JSON.stringify(result, null, 2);
+}
+
+async function runReport() {
+const symbol = document.getElementById('report-symbol').value;
+const days = parseInt(document.getElementById('report-days').value);
+setLoading('report-loading', true);
+const result = await apiCall('/report/generate', {
+method: 'POST',
+headers: { 'Content-Type': 'application/json' },
+body: JSON.stringify({ symbol, days })
+});
+setLoading('report-loading', false);
+const metrics = result.metrics || {};
+const summary = result.summary || '';
+document.getElementById('report-result').textContent = `引擎: ${result.engine}\n` + summary + `\nHTML 长度: ${result.html_length || 0}`;
 }
 
 async function fetchLogs() {

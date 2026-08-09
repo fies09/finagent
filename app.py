@@ -23,6 +23,9 @@ from core.vbt_engine import VectorBacktest
 from core.optuna_tuner import OptunaOptimizer
 from core.charts import ChartBuilder
 from core.stock_ingest import StockIngest
+from core.ashare_ingest import AShareIngest
+from core.factor_eval import FactorEvaluator
+from core.report import ReportBuilder
 from core.forecaster import TimeSeriesForecaster
 from core.live_trader import LiveTrader
 from config.settings import HOST, PORT
@@ -92,11 +95,25 @@ class StockRequest(BaseModel):
     interval: str = "1d"
 
 
+class AShareRequest(BaseModel):
+    symbol: str
+    start: str | None = None
+    end: str | None = None
+
+
+class FactorEvalRequest(BaseModel):
+    symbol: str
+    factor: str = "rsi"
+
+
 forecaster = TimeSeriesForecaster()
 live_trader: LiveTrader | None = None
 optuna_tuner = OptunaOptimizer()
 chart_builder = ChartBuilder()
 stock_ingest = StockIngest()
+ashare_ingest = AShareIngest()
+factor_evaluator = FactorEvaluator()
+report_builder = ReportBuilder()
 
 @app.get("/")
 def root():
@@ -428,6 +445,63 @@ def stock_fetch(req: StockRequest):
 @app.get("/stock/quote")
 def stock_quote(symbol: str):
     return stock_ingest.quote(symbol)
+
+
+@app.post("/ashare/fetch")
+def ashare_fetch(req: AShareRequest):
+    df = ashare_ingest.fetch_daily(req.symbol, start=req.start, end=req.end)
+    return {
+        "symbol": req.symbol,
+        "rows": len(df),
+        "data": df.head(50).to_dict(orient="records") if not df.empty else [],
+        "source": "akshare",
+    }
+
+
+@app.get("/ashare/spot")
+def ashare_spot():
+    df = ashare_ingest.fetch_spot()
+    return {"rows": len(df), "data": df.to_dict(orient="records") if not df.empty else []}
+
+
+@app.post("/factor/evaluate")
+def factor_evaluate(req: FactorEvalRequest):
+    df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 60:
+        ingest.backfill(req.symbol, timeframe="1h", days=180)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 60:
+        raise HTTPException(status_code=404, detail="insufficient data")
+    df_idx = df.copy()
+    df_idx["timestamp"] = pd.to_datetime(df_idx["timestamp"])
+    df_idx = df_idx.set_index("timestamp").sort_index()
+    close = df_idx["close"].astype(float)
+
+    if req.factor == "rsi":
+        import pandas_ta as pta
+        rsi = pta.rsi(close, length=14)
+    elif req.factor == "macd":
+        import pandas_ta as pta
+        macd = pta.macd(close)
+        rsi = macd.iloc[:, 0]
+    elif req.factor == "momentum":
+        rsi = close.pct_change(periods=24)
+    else:
+        rsi = close.pct_change()
+
+    prices_panel = df_idx[["close"]].copy()
+    return factor_evaluator.evaluate(prices_panel, rsi, req.symbol)
+
+
+@app.post("/report/generate")
+def report_generate(req: BacktestRequest):
+    df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        ingest.backfill(req.symbol, timeframe="1h", days=req.days)
+        df = store.load_ohlcv(req.symbol, ingest.exchange.name)
+    if df.empty or len(df) < 30:
+        raise HTTPException(status_code=404, detail="insufficient data")
+    return report_builder.generate(df, req.symbol)
 
 
 if __name__ == "__main__":
